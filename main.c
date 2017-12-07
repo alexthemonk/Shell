@@ -6,6 +6,7 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <signal.h>
+#include <termios.h>
 
 #include "SignalHandlers.h"
 
@@ -20,8 +21,17 @@ int checkout(char* commandPtr);
 char* getFileIn(int option, char* commandPtr);
 char* getFileOut(int option, char* commandPtr);
 void debug();
+char singleChar();
+int getHistoryCount();
 
 int main(int argc , char * argv []) {
+    char *readH;
+    int historyCount;
+    int length;
+    int pressed;
+    char in;
+    char arrow1;
+    char arrow2;
     char *temp;
     char *clean;
     int stdin_c, stdout_c;
@@ -39,8 +49,13 @@ int main(int argc , char * argv []) {
     sigaction(SIGCHLD, &action, NULL);
 
     /* creating a history file or just write to the existed history */
+    
+    historyCount = getHistoryCount();
     history = fopen("command_history", "a+");
     do{
+        pressed = 0; /* number of arrow key pressed */
+        length = 0; /* keep track of the input line */
+        
         /* reset background, 0 for foreground, 1 for background*/
         background = 0;
         
@@ -48,16 +63,86 @@ int main(int argc , char * argv []) {
         printf("\nCommand me Sir -> ");
         memset(line, '\0', MAX_LINE);
 
-        /* reading the command input*/
-        fgets(line , MAX_LINE - 1, stdin);
+        /* reading the command input */
+        // fgets(line , MAX_LINE - 1, stdin);
+        while((in = singleChar()) != '\n'){
+            if(in == '\e'){
+                arrow1 = singleChar();
+                if(arrow1 == '['){
+                    arrow2 = singleChar();
+                    switch(arrow2){
+                        case 'A':
+                            if(pressed == historyCount) break;
+                            pressed++;
+                            while (length != 0) {
+                              length--;
+                              write(2, "\10\33[1P", 5);
+                            }
+                            temp = malloc(MAX_ARGS * sizeof(char));
+                            readH = malloc(MAX_LINE * sizeof(char));
+                            sprintf(temp, "%d", (historyCount - pressed+1));
+                            readH = historyExclaimation(temp);
+                            strcpy(line, readH);
+                            line[strlen(line)-1] = '\0';
+                            printf("%s", line);
+                            free(temp);
+                            length = strlen(line);
+                            /* up arrow */
+                            break;
+                        case 'B':
+                            if(pressed == 0) break;
+                            pressed--;
+                            while (length != 0) {
+                              length--;
+                              write(2, "\10\33[1P", 5);
+                            }
+                            if(pressed>0){
+                                temp = malloc(MAX_ARGS * sizeof(char));
+                                readH = malloc(MAX_LINE * sizeof(char));
+                                sprintf(temp, "%d", (historyCount - pressed+1));
+                                readH = historyExclaimation(temp);
+                                strcpy(line, readH);
+                                line[strlen(line)-1] = '\0';
+                                free(temp);
+                                printf("%s", line);
+                                length = strlen(line);
+                            }
+                            /* down arrow */
+                            break;
+                        case 'C':
+                            /* left */
+                            break;
+                        case 'D':
+                            /* right */
+                            break;
+                    }
+                }
+            }
+            else if(in == 8){
+                /* dealing with back space */
+                if(length == 0) continue;
+                length--;
+                line[length] = '\0';
+                write(2, "\10\33[1P", 5);
+            }
+            else{
+                /* regular characters */
+                line[length] = in;
+                length ++;
+                printf("%c", in);
+                //line[strlen(line)] = '\n';
+            }
+        }
+        printf("\n");
 
         /* check if no command has been inputed */
-        if(strcmp(line, "\n") == 0){
+        if(strcmp(line, "") == 0){
             continue;
         }
+        historyCount++;
         
         /* taking off the \n char at the end */
-        line[strlen(line)-1] = '\0';
+        //line[strlen(line)-1] = '\0';
         /* clean up the extra spaces at the end */
         while(line[strlen(line)-1] == ' '){
             line[strlen(line)-1] = '\0';
@@ -75,6 +160,8 @@ int main(int argc , char * argv []) {
         if(line[0] == '!'){
             /* using ! to execute the command from history */
             temp = historyExclaimation(line);
+            /* taking off the \n char at the end */
+            temp[strlen(temp)-1] = '\0';
             memset(line, '\0', MAX_LINE);
             strcpy(line, temp);
             free(temp);
@@ -287,7 +374,7 @@ int historyCommand(int background){
 
 
 char* historyExclaimation(char *line){
-    int i, l, k;
+    int i, l;
     char* ret;
     FILE* history;
     size_t len;
@@ -297,10 +384,12 @@ char* historyExclaimation(char *line){
     ret = malloc((strlen(line) + 1) * sizeof(char));
     strcpy(ret, line);
     /* get the second element of the line, which is the number */
-    for(i = 0; i < strlen(ret)-1; i++){
-        ret[i] = ret[i+1];
+    if(ret[0] == '!'){
+        for(i = 0; i < strlen(ret)-1; i++){
+            ret[i] = ret[i+1];
+        }
+        ret[strlen(ret)-1] = '\0';
     }
-    ret[strlen(ret)-1] = '\0';
     /* taking off the spaces before the number */
     while(*ret == ' '){
         ret++;
@@ -311,11 +400,10 @@ char* historyExclaimation(char *line){
     history = fopen("command_history", "r");
     for(i = 0; i < l; i++){
         getline(&ret, &len, history);
-        k = strlen(ret);
     }
     fclose(history);
-    /* taking off the \n char at the end */
-    ret[k-1] = '\0';
+    // ret[k] = '\0';
+    
     return ret;
 }
 
@@ -369,6 +457,50 @@ char* getFileOut(int option, char* commandPtr){
         fn++;
     }
     return fn;
+}
+
+
+char singleChar(){
+    char c;
+    
+    /* system ("/bin/stty raw");
+    system ("/bin/stty -echo");
+    
+    c = getchar();
+    
+    system ("/bin/stty cooked");
+    system ("/bin/stty echo"); */
+    
+    struct termios orig;
+    struct termios newt;
+    
+    tcgetattr(STDIN_FILENO, &orig);
+    newt = orig;
+    newt.c_lflag &= ~(ICANON|ECHO|ECHOE);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    c = getchar();
+    
+    tcsetattr(STDIN_FILENO, TCSANOW, &orig);
+    
+    return c;
+}
+
+
+int getHistoryCount(){
+    char current;
+    FILE* history;
+    int ret = 0;
+    history = fopen("command_history", "r");
+    if(history == NULL) return 0; /* if no such file exist */
+    
+    while((current = fgetc(history)) != EOF){
+        if(current == '\n'){
+            ret ++;
+        }
+    }
+    
+    fclose(history);
+    return ret;
 }
 
 
