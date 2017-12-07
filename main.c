@@ -23,6 +23,7 @@ void debug();
 
 int main(int argc , char * argv []) {
     char *temp;
+    char *clean;
     int stdin_c, stdout_c;
     struct sigaction action;
     int background;
@@ -55,6 +56,22 @@ int main(int argc , char * argv []) {
             continue;
         }
         
+        /* taking off the \n char at the end */
+        line[strlen(line)-1] = '\0';
+        /* clean up the extra spaces at the end */
+        while(line[strlen(line)-1] == ' '){
+            line[strlen(line)-1] = '\0';
+        }
+        /* clean up extra spaces at the beginning */
+        temp = malloc((strlen(line) + 1) * sizeof(char));
+        clean = temp;
+        strcpy(temp, line);
+        while(*temp == ' '){
+            temp++;
+        }
+        strcpy(line, temp);
+        free(clean);
+        
         if(line[0] == '!'){
             /* using ! to execute the command from history */
             temp = historyExclaimation(line);
@@ -65,9 +82,10 @@ int main(int argc , char * argv []) {
         }
         
         /* dealing with other arbitrary commands */
-        if(strcmp(line, "history\n") == 0){
+        if(strcmp(line, "history") == 0){
             /* storing the command into the history file */
             fputs(line, history);
+            fputs("\n", history);
             fflush(history);
             /* deal with history command */
             historyCommand(background);
@@ -76,11 +94,10 @@ int main(int argc , char * argv []) {
         
         /* storing the command into the history file */
         fputs(line, history);
+        fputs("\n", history);
         fflush(history);
         
         /* default operations */
-        /* taking off the \n char at the end */
-        line[strlen(line)-1] = '\0';
         if(strcmp(line, "quit") == 0){
             break;
         }
@@ -88,6 +105,10 @@ int main(int argc , char * argv []) {
         /* dealing with background commands */
         if(line[strlen(line)-1] == '&'){
             background = 1;
+            line[strlen(line)-1] = '\0';
+        }
+        /* clean up the extra spaces at the end */
+        while(line[strlen(line)-1] == ' '){
             line[strlen(line)-1] = '\0';
         }
             
@@ -279,6 +300,11 @@ char* historyExclaimation(char *line){
     for(i = 0; i < strlen(ret)-1; i++){
         ret[i] = ret[i+1];
     }
+    ret[strlen(ret)-1] = '\0';
+    /* taking off the spaces before the number */
+    while(*ret == ' '){
+        ret++;
+    }
     
     l = atoi(ret);
     ret[0] = '\0';
@@ -289,7 +315,7 @@ char* historyExclaimation(char *line){
     }
     fclose(history);
     /* taking off the \n char at the end */
-    ret[k] = '\0';
+    ret[k-1] = '\0';
     return ret;
 }
 
