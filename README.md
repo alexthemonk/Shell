@@ -1,5 +1,6 @@
 # Shell-Project
 Linux Shell
+(Not compatible with Ubuntu)
 
 type make to compile the shell
 
