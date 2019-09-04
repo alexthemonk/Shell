@@ -1,5 +1,5 @@
 # Shell-Project
-Linux Shell
+Arch Linux Shell
 (Not compatible with Ubuntu)
 
 type make to compile the shell
